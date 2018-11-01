@@ -140,7 +140,8 @@ const renderMethods = (
   methods: MethodDescriptorProto[],
   packageName: string,
   serviceName: string,
-  fileName: string
+  fileName: string,
+  isServer: boolean
 ) => {
   const context = getImportedTypesContext();
   return methods
@@ -148,6 +149,15 @@ const renderMethods = (
       const name = method.getName();
       const inputType = context.getTypeName(method.getInputType(), fileName);
       const outputType = context.getTypeName(method.getOutputType(), fileName);
+      if (isServer) {
+        return `
+export function ${name}(app: Express, handler: (params: ${inputType}) => Promise<${outputType}>) {
+  return webapi<${inputType}, ${outputType}>("${
+          packageName === "" ? "" : `${packageName}.`
+        }${serviceName}/${name}", app, handler, { method: "POST" });
+}
+        `;
+      }
       return `
 export function ${name}(payload: ${inputType}) {
   return webapi<${outputType}>("${
@@ -161,14 +171,16 @@ export function ${name}(payload: ${inputType}) {
 const renderService = (
   service: ServiceDescriptorProto,
   packageName: string,
-  fileName: string
+  fileName: string,
+  isServer: boolean
 ) => {
   return `
 ${renderMethods(
     service.getMethodList(),
     packageName,
     service.getName(),
-    fileName
+    fileName,
+    isServer
   )}
 
 export default {
@@ -183,7 +195,8 @@ ${service
 function renderImportSection(
   hasService: boolean,
   webapiPath: string,
-  fileName: string
+  fileName: string,
+  isServer: boolean
 ) {
   const referenceMap = getImportedTypesContext().getReferenceMap(fileName);
 
@@ -196,11 +209,22 @@ ${Object.keys(referenceMap === undefined ? {} : referenceMap)
         .join(", ")} } from "${refFileName}";`;
     })
     .join(lineSplitter)}
+${
+    isServer
+      ? `
+import { Express } from "express"
+`
+      : ""
+  }
 ${hasService ? `import webapi from "${webapiPath}";` : ""}
   `.trim();
 }
 
-const template = (data: FileDescriptorProto, apiPath: string) => {
+const template = (
+  data: FileDescriptorProto,
+  apiPath: string,
+  isServer: boolean = false
+) => {
   const messages = data.getMessageTypeList();
   const enums = data.getEnumTypeList();
   const services = data.getServiceList();
@@ -216,7 +240,7 @@ const template = (data: FileDescriptorProto, apiPath: string) => {
   let returnStr = `
 ${renderAllEnums(enums)}
 ${renderAllMessages(messages, packageName, fileName)}
-${hasService ? renderService(services[0], packageName, fileName) : ""}
+${hasService ? renderService(services[0], packageName, fileName, isServer) : ""}
 
 `.trim();
   returnStr =
@@ -226,7 +250,7 @@ ${hasService ? renderService(services[0], packageName, fileName) : ""}
  * Don't change manually
  */
 
-${renderImportSection(hasService, webapiPath, fileName)}
+${renderImportSection(hasService, webapiPath, fileName, isServer)}
 
 ` + returnStr;
   return returnStr.trim();

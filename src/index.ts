@@ -25,7 +25,9 @@ withAllStdIn().then((inputBuff: Buffer) => {
     );
     const codeGenResponse = new CodeGeneratorResponse();
     const fileNameToDescriptor: { [key: string]: FileDescriptorProto } = {};
-    const webapi = getParameter(codeGenRequest.getParameter(), "apiPath");
+    const webapi = getParameter(codeGenRequest.getParameter(), "service");
+    const isServer =
+      getParameter(codeGenRequest.getParameter(), "server") === "true";
 
     codeGenRequest.getProtoFileList().forEach(protoFileDescriptor => {
       fileNameToDescriptor[protoFileDescriptor.getName()] = protoFileDescriptor;
@@ -38,11 +40,14 @@ withAllStdIn().then((inputBuff: Buffer) => {
         .replace(/\./g, "/");
       const thisFile = new CodeGeneratorResponse.File();
       thisFile.setName(`${outputFileName}.ts`);
+
+      const servicePath = webapi === undefined ? "./webapi" : webapi;
+
       thisFile.setContent(
-        template(
-          fileNameToDescriptor[fileName],
-          webapi === undefined ? "./webapi" : webapi
-        ).replace(/^\s*/, "")
+        template(fileNameToDescriptor[fileName], servicePath, isServer).replace(
+          /^\s*/,
+          ""
+        )
       );
       codeGenResponse.addFile(thisFile);
     });
